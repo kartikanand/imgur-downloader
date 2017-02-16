@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import threading
 
 import progressbar
 import requests
@@ -15,8 +16,12 @@ def get_extension(link):
 
     return ext
 
+lock = threading.Lock()
 
+i = 1
 def download_img(img):
+    global i, bar
+
     file_ext = get_extension(img.link)
     resp = requests.get(img.link, stream=True)
 
@@ -27,6 +32,9 @@ def download_img(img):
         for chunk in resp.iter_content(chunk_size=1024):
             f.write(chunk)
 
+    with lock:
+        bar.update(i)
+        i += 1
 
 try:
     album_id = sys.argv[1]
@@ -39,9 +47,16 @@ client_secret = os.getenv('IMGUR_CLIENT_SECRET')
 client = ImgurClient(client_id, client_secret)
 
 img_lst = client.get_album_images(album_id)
+bar = progressbar.ProgressBar(max_value=len(img_lst))
 
-bar = progressbar.ProgressBar()
+threads = []
+for img in img_lst:
+    t = threading.Thread(target=download_img, args=(img,))
+    threads.append(t)
+    t.start()
 
-for img in bar(img_lst):
-    download_img(img)
+
+for t in threads:
+    t.join()
+
 
